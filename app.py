@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 st.set_page_config(page_title="Chacutería Foods Dashboard", layout="wide")
-base = Path(__file__).parent / "data"
+base = Path(__file__).parent
 si = pd.read_csv(base / "sell_in_limpio.csv", parse_dates=["fecha"])
 so = pd.read_csv(base / "sell_out_limpio.csv", parse_dates=["fecha"])
 summary = pd.read_csv(base / "resumen_mensual.csv", parse_dates=["mes"])
