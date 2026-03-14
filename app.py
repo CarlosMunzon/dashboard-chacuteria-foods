@@ -15,7 +15,7 @@ market_sum = pd.read_csv(base / "mercado_resumen_mensual.csv", parse_dates=["mes
 def filter_df(df):
     canales = st.sidebar.multiselect("Canal", sorted(x for x in df["canal"].dropna().unique()))
     clientes = st.sidebar.multiselect("Cliente", sorted(x for x in df["cliente"].dropna().unique()))
-    categorias = st.sidebar.multiselect("Categoría", sorted(x for x in df["categoria"].dropna().unique()))
+    categorias = st.sidebar.multiselect("Categoría", sorted(x for x in df["categoria"].dropna().unique()), key="categoria_filter")
     regionales = st.sidebar.multiselect("Regional", sorted(x for x in df["regional"].dropna().unique()))
     out = df.copy()
     if canales: out = out[out["canal"].isin(canales)]
