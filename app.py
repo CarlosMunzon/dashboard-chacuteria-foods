@@ -13,10 +13,10 @@ alerts_inv = pd.read_csv(base / "alertas_inventario_dic.csv")
 alerts_beh = pd.read_csv(base / "alertas_comportamiento.csv", parse_dates=["mes"])
 market_sum = pd.read_csv(base / "mercado_resumen_mensual.csv", parse_dates=["mes"])
 def filter_df(df):
-    canales = st.sidebar.multiselect("Canal", sorted(x for x in df["canal"].dropna().unique()), key=f"{prefix}_canal_filter")
-    clientes = st.sidebar.multiselect("Cliente", sorted(x for x in df["cliente"].dropna().unique()))
-    categorias = st.sidebar.multiselect("Categoría",sorted(x for x in df["categoria"].dropna().unique()),key=f"{prefix}_categoria_filter")
-    regionales = st.sidebar.multiselect("Regional", sorted(x for x in df["regional"].dropna().unique()))
+    canales = st.sidebar.multiselect("Canal", sorted(x for x in si["canal"].dropna().unique()))
+    clientes = st.sidebar.multiselect("Cliente", sorted(x for x in si["cliente"].dropna().unique()))
+    categorias = st.sidebar.multiselect("Categoría", sorted(x for x in si["categoria"].dropna().unique()))
+    regionales = st.sidebar.multiselect("Regional", sorted(x for x in si["regional"].dropna().unique()))
     out = df.copy()
     if canales: out = out[out["canal"].isin(canales)]
     if clientes: out = out[out["cliente"].isin(clientes)]
