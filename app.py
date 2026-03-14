@@ -5,23 +5,154 @@ import plotly.graph_objects as go
 from pathlib import Path
 
 st.set_page_config(
-    page_title="Chacutería Foods | Dashboard Comercial 2025",
-    page_icon="📊",
+    page_title="Chacutería Foods | Dashboard Gerencial 2025",
+    page_icon="📈",
     layout="wide"
 )
 
-# -----------------------------
-# Utilidades
-# -----------------------------
+# =========================================================
+# ESTILOS
+# =========================================================
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(180deg, #eef3f8 0%, #f7f9fc 100%);
+    }
+
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #163a63 0%, #0f2d4d 100%);
+        border-right: 1px solid rgba(255,255,255,0.08);
+    }
+
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span {
+        color: white !important;
+    }
+
+    [data-testid="stSidebar"] .stMultiSelect div[data-baseweb="select"] > div,
+    [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
+        background: rgba(255,255,255,0.10) !important;
+        border: 1px solid rgba(255,255,255,0.18) !important;
+        border-radius: 12px !important;
+    }
+
+    .hero {
+        background: linear-gradient(90deg, #163a63 0%, #1f5d99 55%, #2873bf 100%);
+        border-radius: 24px;
+        padding: 30px 34px 26px 34px;
+        color: white;
+        box-shadow: 0 12px 30px rgba(17, 45, 79, 0.18);
+        margin-bottom: 18px;
+    }
+
+    .hero-title {
+        font-size: 44px;
+        font-weight: 800;
+        line-height: 1.05;
+        margin: 0 0 8px 0;
+        letter-spacing: -1px;
+    }
+
+    .hero-subtitle {
+        font-size: 20px;
+        line-height: 1.35;
+        opacity: 0.96;
+        margin: 0;
+    }
+
+    .section-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #13314f;
+        margin-top: 10px;
+        margin-bottom: 8px;
+    }
+
+    div[data-testid="metric-container"] {
+        background: white;
+        border: 1px solid #dde6f0;
+        padding: 18px 18px 16px 18px;
+        border-radius: 20px;
+        box-shadow: 0 6px 18px rgba(23, 45, 77, 0.07);
+    }
+
+    div[data-testid="metric-container"] label {
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        color: #27496b !important;
+    }
+
+    div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+        font-size: 28px !important;
+        font-weight: 800 !important;
+        color: #102a43 !important;
+    }
+
+    div[data-testid="metric-container"] [data-testid="stMetricDelta"] {
+        font-size: 14px !important;
+        font-weight: 700 !important;
+    }
+
+    .insight-box {
+        background: white;
+        border-left: 6px solid #1f5d99;
+        border-radius: 16px;
+        padding: 14px 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 6px 18px rgba(23, 45, 77, 0.06);
+        color: #15314f;
+        font-size: 17px;
+    }
+
+    .stPlotlyChart {
+        background: white;
+        border-radius: 22px;
+        padding: 10px 12px 4px 12px;
+        box-shadow: 0 8px 24px rgba(23, 45, 77, 0.07);
+        border: 1px solid #e4ebf3;
+    }
+
+    [data-testid="stDataFrame"] {
+        background: white;
+        border-radius: 18px;
+        padding: 6px;
+        border: 1px solid #e4ebf3;
+        box-shadow: 0 8px 24px rgba(23, 45, 77, 0.06);
+    }
+
+    .small-note {
+        color: #50677e;
+        font-size: 15px;
+        margin-top: -6px;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# UTILIDADES
+# =========================================================
 def format_cop(value: float) -> str:
     if pd.isna(value):
         return "$0 COP"
     abs_value = abs(value)
     if abs_value >= 1e9:
-        return f"${value/1e9:,.2f} billones COP"
+        return f"${value/1e9:,.2f} B"
     if abs_value >= 1e6:
-        return f"${value/1e6:,.1f} millones COP"
-    return f"${value:,.0f} COP"
+        return f"${value/1e6:,.1f} MM"
+    return f"${value:,.0f}"
 
 def format_ton(value: float) -> str:
     if pd.isna(value):
@@ -51,46 +182,35 @@ def apply_filters(df, canales, clientes, categorias, regionales):
         out = out[out["regional"].isin(regionales)]
     return out
 
-# -----------------------------
-# Carga de datos
-# -----------------------------
+# =========================================================
+# CARGA DE DATOS
+# =========================================================
 base = Path(__file__).parent
 si, so, summary, inv, alerts_inv, alerts_beh, market_sum = load_data(base)
 
-# -----------------------------
-# Header
-# -----------------------------
-st.title("Chacutería Foods – Dashboard comercial 2025")
-st.caption("Versión mejorada del dashboard para seguimiento comercial, inventario y mercado.")
+# =========================================================
+# SIDEBAR
+# =========================================================
+st.sidebar.markdown("## 🎛️ Filtros gerenciales")
+st.sidebar.markdown("Refina la lectura comercial por segmento.")
 
-# -----------------------------
-# Sidebar
-# -----------------------------
-st.sidebar.header("Filtros")
+canales = st.sidebar.multiselect("Canal", sorted(x for x in si["canal"].dropna().unique()))
+clientes = st.sidebar.multiselect("Cliente", sorted(x for x in si["cliente"].dropna().unique()))
+categorias = st.sidebar.multiselect("Categoría", sorted(x for x in si["categoria"].dropna().unique()))
+regionales = st.sidebar.multiselect("Regional", sorted(x for x in si["regional"].dropna().unique()))
 
-canales = st.sidebar.multiselect(
-    "Canal",
-    sorted(x for x in si["canal"].dropna().unique())
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🧭 Guía rápida")
+st.sidebar.markdown(
+    "- KPIs: visión total del negocio\n"
+    "- Evolución mensual: tendencia de valor\n"
+    "- Mix por canal/categoría: composición comercial\n"
+    "- Alertas: foco operativo inmediato"
 )
 
-clientes = st.sidebar.multiselect(
-    "Cliente",
-    sorted(x for x in si["cliente"].dropna().unique())
-)
-
-categorias = st.sidebar.multiselect(
-    "Categoría",
-    sorted(x for x in si["categoria"].dropna().unique())
-)
-
-regionales = st.sidebar.multiselect(
-    "Regional",
-    sorted(x for x in si["regional"].dropna().unique())
-)
-
-# -----------------------------
-# Aplicación de filtros
-# -----------------------------
+# =========================================================
+# FILTROS
+# =========================================================
 si_f = apply_filters(si, canales, clientes, categorias, regionales)
 so_f = apply_filters(so, canales, clientes, categorias, regionales)
 
@@ -101,9 +221,19 @@ if si_f.empty and so_f.empty:
 si_valid = si_f[si_f["sku_valido"] == True].copy()
 so_valid = so_f[so_f["sku_valido"] == True].copy()
 
-# -----------------------------
-# KPIs
-# -----------------------------
+# =========================================================
+# HERO
+# =========================================================
+st.markdown("""
+<div class="hero">
+    <div class="hero-title">Chacutería Foods – Dashboard gerencial 2025</div>
+    <div class="hero-subtitle">Visión ejecutiva de sell-in, sell-out, inventario y participación de mercado para seguimiento comercial y toma de decisiones.</div>
+</div>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# KPI + INSIGHT
+# =========================================================
 k1 = si_valid["valor"].sum()
 k2 = so_valid["valor"].sum()
 k3 = si_valid["kilos"].sum()
@@ -112,15 +242,23 @@ k4 = so_valid["kilos"].sum()
 delta_valor = k1 - k2
 delta_vol = k3 - k4
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Sell-in valor", format_cop(k1))
-c2.metric("Sell-out valor", format_cop(k2), delta=format_cop(delta_valor))
-c3.metric("Sell-in volumen", format_ton(k3))
-c4.metric("Sell-out volumen", format_ton(k4), delta=format_ton(delta_vol))
+insight_text = (
+    f"El negocio registra un sell-in de <b>{format_cop(k1)}</b> y un sell-out de "
+    f"<b>{format_cop(k2)}</b>. La brecha actual es de <b>{format_cop(delta_valor)}</b>, "
+    f"lo que sugiere revisar rotación, inventario y captura de demanda en clientes clave."
+)
 
-# -----------------------------
-# Evolución mensual
-# -----------------------------
+st.markdown(f'<div class="insight-box">📌 {insight_text}</div>', unsafe_allow_html=True)
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("💰 Sell-in valor", format_cop(k1))
+c2.metric("🛒 Sell-out valor", format_cop(k2), delta=format_cop(delta_valor))
+c3.metric("📦 Sell-in volumen", format_ton(k3))
+c4.metric("🚚 Sell-out volumen", format_ton(k4), delta=format_ton(delta_vol))
+
+# =========================================================
+# TENDENCIA
+# =========================================================
 si_m = (
     si_valid.assign(mes=lambda d: d["fecha"].values.astype("datetime64[M]"))
     .groupby("mes", as_index=False)
@@ -135,33 +273,41 @@ so_m = (
 
 trend = pd.merge(si_m, so_m, on="mes", how="outer").fillna(0).sort_values("mes")
 
-st.subheader("Evolución mensual")
+st.markdown('<div class="section-title">Evolución mensual del negocio</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Comparativo mensual de valor para sell-in y sell-out.</div>', unsafe_allow_html=True)
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(
-    x=trend["mes"],
-    y=trend["sell_in_valor"] / 1e9,
-    mode="lines+markers",
-    name="Sell-in"
+    x=trend["mes"], y=trend["sell_in_valor"] / 1e9,
+    mode="lines+markers", name="Sell-in",
+    line=dict(width=4, color="#4F6BED"), marker=dict(size=8)
 ))
 fig.add_trace(go.Scatter(
-    x=trend["mes"],
-    y=trend["sell_out_valor"] / 1e9,
-    mode="lines+markers",
-    name="Sell-out"
+    x=trend["mes"], y=trend["sell_out_valor"] / 1e9,
+    mode="lines+markers", name="Sell-out",
+    line=dict(width=4, color="#F05A3A"), marker=dict(size=8)
 ))
 fig.update_layout(
-    height=380,
+    height=420,
     template="plotly_white",
-    title="Valor mensual (billones COP)",
+    title="Valor mensual (COP billones)",
     xaxis_title="Mes",
     yaxis_title="Billones COP",
-    legend_title=""
+    legend_title="",
+    paper_bgcolor="white",
+    plot_bgcolor="white",
+    font=dict(size=14, color="#17324d"),
+    title_x=0.02,
+    margin=dict(l=20, r=20, t=60, b=20)
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------
-# Visualizaciones
-# -----------------------------
+# =========================================================
+# GRAFICOS SECUNDARIOS
+# =========================================================
+st.markdown('<div class="section-title">Composición comercial</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Apertura por canal y categoría para identificar focos de crecimiento.</div>', unsafe_allow_html=True)
+
 left, right = st.columns(2)
 
 with left:
@@ -171,14 +317,17 @@ with left:
         .sort_values("valor", ascending=False)
     )
     fig_mix = px.bar(
-        mix,
-        x="canal",
-        y="valor",
+        mix, x="canal", y="valor",
         title="Mix sell-in por canal",
         labels={"valor": "Valor (COP)", "canal": "Canal"},
         text_auto=".2s"
     )
-    fig_mix.update_layout(template="plotly_white", height=360)
+    fig_mix.update_traces(marker_color="#2C7BE5")
+    fig_mix.update_layout(
+        template="plotly_white", height=380, title_x=0.03,
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(size=13, color="#17324d")
+    )
     st.plotly_chart(fig_mix, use_container_width=True)
 
 with right:
@@ -188,75 +337,85 @@ with right:
         .sort_values("valor", ascending=False)
     )
     fig_cat = px.bar(
-        cat,
-        x="categoria",
-        y="valor",
+        cat, x="categoria", y="valor",
         title="Sell-out por categoría",
         labels={"valor": "Valor (COP)", "categoria": "Categoría"},
         text_auto=".2s"
     )
-    fig_cat.update_layout(template="plotly_white", height=360)
+    fig_cat.update_traces(marker_color="#13B58C")
+    fig_cat.update_layout(
+        template="plotly_white", height=380, title_x=0.03,
+        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(size=13, color="#17324d")
+    )
     st.plotly_chart(fig_cat, use_container_width=True)
 
-# -----------------------------
-# Inventario y alertas
-# -----------------------------
-st.subheader("Inventario y alertas")
-if {"cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"}.issubset(alerts_inv.columns):
-    st.dataframe(
-        alerts_inv[["cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"]]
-        .sort_values(["riesgo", "doh_30d"])
-        .head(50),
-        use_container_width=True,
-        hide_index=True
+# =========================================================
+# INVENTARIO Y MERCADO
+# =========================================================
+left2, right2 = st.columns([1.15, 1])
+
+with left2:
+    st.markdown('<div class="section-title">Inventario y alertas críticas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-note">Productos y clientes con mayor prioridad operativa.</div>', unsafe_allow_html=True)
+    if {"cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"}.issubset(alerts_inv.columns):
+        st.dataframe(
+            alerts_inv[["cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"]]
+            .sort_values(["riesgo", "doh_30d"])
+            .head(30),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No se encontraron las columnas esperadas en alertas de inventario.")
+
+with right2:
+    st.markdown('<div class="section-title">Share promedio mensual retail</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-note">Seguimiento comparativo frente a competidores relevantes.</div>', unsafe_allow_html=True)
+    figm = go.Figure()
+    figm.add_trace(go.Scatter(
+        x=market_sum["mes"], y=market_sum["share_compania_prom"] * 100,
+        mode="lines+markers", name="Compañía",
+        line=dict(width=4, color="#4F6BED"), marker=dict(size=7)
+    ))
+    figm.add_trace(go.Scatter(
+        x=market_sum["mes"], y=market_sum["share_competidor_1_prom"] * 100,
+        mode="lines+markers", name="Competidor 1",
+        line=dict(width=3, color="#F05A3A"), marker=dict(size=7)
+    ))
+    figm.add_trace(go.Scatter(
+        x=market_sum["mes"], y=market_sum["share_competidor_2_prom"] * 100,
+        mode="lines+markers", name="Competidor 2",
+        line=dict(width=3, color="#13B58C"), marker=dict(size=7)
+    ))
+    figm.update_layout(
+        height=415,
+        template="plotly_white",
+        title="Participación promedio mensual (%)",
+        xaxis_title="Mes",
+        yaxis_title="Share %",
+        legend_title="",
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(size=13, color="#17324d"),
+        title_x=0.03
     )
-else:
-    st.info("No se encontraron las columnas esperadas en alertas de inventario.")
+    st.plotly_chart(figm, use_container_width=True)
 
-# -----------------------------
-# Mercado
-# -----------------------------
-st.subheader("Mercado")
-figm = go.Figure()
-figm.add_trace(go.Scatter(
-    x=market_sum["mes"],
-    y=market_sum["share_compania_prom"] * 100,
-    mode="lines+markers",
-    name="Compañía"
-))
-figm.add_trace(go.Scatter(
-    x=market_sum["mes"],
-    y=market_sum["share_competidor_1_prom"] * 100,
-    mode="lines+markers",
-    name="Competidor 1"
-))
-figm.add_trace(go.Scatter(
-    x=market_sum["mes"],
-    y=market_sum["share_competidor_2_prom"] * 100,
-    mode="lines+markers",
-    name="Competidor 2"
-))
-figm.update_layout(
-    height=360,
-    template="plotly_white",
-    title="Share promedio mensual (%)",
-    xaxis_title="Mes",
-    yaxis_title="Participación (%)",
-    legend_title=""
-)
-st.plotly_chart(figm, use_container_width=True)
+# =========================================================
+# ALERTAS ATIPICAS
+# =========================================================
+st.markdown('<div class="section-title">Alertas atípicas de comportamiento</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Cambios relevantes vs. base histórica de 3 meses.</div>', unsafe_allow_html=True)
 
-# -----------------------------
-# Alertas atípicas
-# -----------------------------
-st.subheader("Alertas atípicas")
 if {"anio_mes", "cliente", "categoria", "valor", "base_3m", "var_vs_base_pct", "alerta"}.issubset(alerts_beh.columns):
     st.dataframe(
         alerts_beh[["anio_mes", "cliente", "categoria", "valor", "base_3m", "var_vs_base_pct", "alerta"]]
         .sort_values("var_vs_base_pct")
-        .head(50),
+        .head(40),
         use_container_width=True,
         hide_index=True
     )
 else:
     st.info("No se encontraron las columnas esperadas en alertas de comportamiento.")
+
