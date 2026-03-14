@@ -350,9 +350,11 @@ delta_vol = k3 - k4
 delta_u = u1 - u2
 gap_pct = (delta_valor / k1) * 100 if k1 != 0 else 0
 
-# Presupuesto ajustado por escala
+# Presupuesto ajustado por escala + protección
 budget_total = None
 budget_pct = None
+budget_validated = True
+
 if summary is not None and not summary.empty:
     budget_candidates = [c for c in summary.columns if "presupuesto" in c.lower()]
     if budget_candidates:
@@ -363,8 +365,12 @@ if summary is not None and not summary.empty:
         elif budget_total < 1e9:
             budget_total = budget_total * 1_000_000
 
-        if budget_total != 0:
+        if budget_total and budget_total > 0:
             budget_pct = (k1 / budget_total) * 100
+
+            if budget_pct > 300:
+                budget_validated = False
+                budget_pct = None
 
 # Inventario / DOH
 inv_total_kg = None
@@ -431,12 +437,17 @@ st.markdown('<div class="small-note">Indicadores de control para seguimiento eje
 s1, s2, s3, s4 = st.columns(4)
 
 budget_label, budget_class = traffic_light(budget_pct if budget_pct is not None else float("nan"), 100, 95)
+if not budget_validated:
+    budget_label, budget_class = ("Revisar base", "pill-yellow")
+
 with s1:
     st.markdown(f"""
     <div class="traffic-card">
         <div class="traffic-title">Cumplimiento vs presupuesto</div>
         <div class="traffic-value">{f"{budget_pct:.1f}%" if budget_pct is not None else "N/D"}</div>
-        <div class="mini-card-sub">Presupuesto: {format_cop(budget_total) if budget_total is not None else "N/D"}</div>
+        <div class="mini-card-sub">
+            {"Presupuesto: " + format_cop(budget_total) if budget_total is not None else "Presupuesto: N/D"}
+        </div>
         <div class="traffic-pill {budget_class}">{budget_label}</div>
     </div>
     """, unsafe_allow_html=True)
@@ -507,6 +518,25 @@ with i3:
         <div class="mini-card-sub">Prioridad sugerida según brecha comercial e inventario.</div>
     </div>
     """, unsafe_allow_html=True)
+
+# =========================================================
+# LECTURA EJECUTIVA AUTOMATICA
+# =========================================================
+st.markdown('<div class="section-title">Lectura ejecutiva automática</div>', unsafe_allow_html=True)
+
+if gap_pct > 20:
+    st.error(
+        "Brecha significativa entre sell-in y sell-out. Existe acumulación de inventario en clientes. "
+        "Se recomienda revisar rotación por cliente y moderar despachos."
+    )
+elif gap_pct > 10:
+    st.warning(
+        "Brecha moderada entre sell-in y sell-out. Es necesario monitorear rotación en cuentas clave."
+    )
+else:
+    st.success(
+        "Flujo comercial balanceado entre sell-in y sell-out."
+    )
 
 # =========================================================
 # TENDENCIA
@@ -581,6 +611,44 @@ fig.update_layout(
     margin=dict(l=20, r=20, t=60, b=20)
 )
 st.plotly_chart(fig, use_container_width=True)
+
+# =========================================================
+# DOH HISTORICO
+# =========================================================
+st.markdown('<div class="section-title">Evolución de inventario (DOH)</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Seguimiento del comportamiento histórico de los días de inventario.</div>', unsafe_allow_html=True)
+
+if inv is not None and not inv.empty and "mes" in inv.columns and "doh_30d" in inv.columns:
+    doh_m = (
+        inv.groupby("mes", as_index=False)
+        .agg(doh=("doh_30d", "mean"))
+        .sort_values("mes")
+    )
+
+    fig_doh = px.line(
+        doh_m,
+        x="mes",
+        y="doh",
+        title="Días de inventario promedio",
+        markers=True
+    )
+
+    fig_doh.update_layout(
+        template="plotly_white",
+        height=350,
+        title_x=0.03,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(size=13, color="#17324d")
+    )
+
+    st.plotly_chart(fig_doh, use_container_width=True)
+
+    sobre_hist = inv[inv["doh_30d"] > 35]
+    if len(sobre_hist) > 0:
+        st.warning(
+            f"⚠️ Riesgo de sobreinventario detectado en {len(sobre_hist)} registros con DOH superior a 35 días."
+        )
 
 # =========================================================
 # COMPOSICION COMERCIAL
