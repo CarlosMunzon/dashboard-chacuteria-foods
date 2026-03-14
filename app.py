@@ -263,33 +263,6 @@ def safe_top_label(df, group_col, value_col="valor"):
             return str(tmp.iloc[0][group_col])
     return "N/D"
 
-def choose_budget_display(k1, budget_total):
-    if budget_total is None or budget_total <= 0:
-        return 0.0, "$0 COP", "pill-yellow", "Sin dato"
-
-    candidates = [
-        budget_total,
-        budget_total * 1_000,
-        budget_total * 1_000_000,
-        budget_total * 1_000_000_000
-    ]
-
-    best_budget = None
-    best_pct = None
-    best_gap = None
-
-    for cand in candidates:
-        pct = (k1 / cand) * 100 if cand else 0
-        gap = abs(pct - 100)
-        if best_gap is None or gap < best_gap:
-            best_gap = gap
-            best_budget = cand
-            best_pct = pct
-
-    pct_capped = max(0, min(best_pct, 199.9))
-    label, pill = traffic_light(pct_capped, 100, 95)
-    return pct_capped, format_cop(best_budget), pill, label
-
 @st.cache_data
 def load_data(base_path: Path):
     si = pd.read_csv(base_path / "sell_in_limpio.csv", parse_dates=["fecha"])
@@ -385,7 +358,9 @@ delta_vol = k3 - k4
 delta_u = u1 - u2
 gap_pct = (delta_valor / k1) * 100 if k1 != 0 else 0
 
-# Presupuesto sin N/D
+# =========================================================
+# PRESUPUESTO CORREGIDO
+# =========================================================
 budget_total_raw = None
 budget_pct = 0.0
 budget_total_display = "$0 COP"
@@ -393,10 +368,15 @@ budget_class = "pill-yellow"
 budget_label = "Sin dato"
 
 if summary is not None and not summary.empty:
-    budget_candidates = [c for c in summary.columns if "presupuesto" in c.lower()]
-    if budget_candidates:
-        budget_total_raw = summary[budget_candidates[0]].sum()
-        budget_pct, budget_total_display, budget_class, budget_label = choose_budget_display(k1, budget_total_raw)
+    if "valor_presupuesto" in summary.columns:
+        budget_total_raw = summary["valor_presupuesto"].sum()
+    elif "presupuesto_valor" in summary.columns:
+        budget_total_raw = summary["presupuesto_valor"].sum()
+
+    if budget_total_raw is not None and budget_total_raw > 0:
+        budget_pct = (k1 / budget_total_raw) * 100
+        budget_total_display = format_cop(budget_total_raw)
+        budget_label, budget_class = traffic_light(budget_pct, 100, 95)
 
 # Inventario / DOH
 inv_total_kg = None
@@ -580,16 +560,11 @@ trend = pd.merge(si_m, so_m, on="mes", how="outer").fillna(0).sort_values("mes")
 
 if summary is not None and not summary.empty:
     sum_copy = summary.copy()
-    budget_candidates = [c for c in sum_copy.columns if "presupuesto" in c.lower()]
-    if "mes" in sum_copy.columns and budget_candidates:
-        sum_copy = sum_copy[["mes", budget_candidates[0]]].rename(columns={budget_candidates[0]: "presupuesto"})
-
-        total_pres = sum_copy["presupuesto"].sum()
-        if total_pres < 1e6:
-            sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1000
-        elif total_pres < 1e9:
-            sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1_000_000
-
+    if "mes" in sum_copy.columns and "valor_presupuesto" in sum_copy.columns:
+        sum_copy = sum_copy[["mes", "valor_presupuesto"]].rename(columns={"valor_presupuesto": "presupuesto"})
+        trend = trend.merge(sum_copy, on="mes", how="left")
+    elif "mes" in sum_copy.columns and "presupuesto_valor" in sum_copy.columns:
+        sum_copy = sum_copy[["mes", "presupuesto_valor"]].rename(columns={"presupuesto_valor": "presupuesto"})
         trend = trend.merge(sum_copy, on="mes", how="left")
 
 st.markdown('<div class="section-title">Evolución mensual del negocio</div>', unsafe_allow_html=True)
