@@ -235,6 +235,11 @@ def format_ton(value: float) -> str:
         return "0.0 ton"
     return f"{value/1000:,.1f} ton"
 
+def format_units(value: float) -> str:
+    if pd.isna(value):
+        return "0"
+    return f"{value:,.0f}"
+
 def traffic_light(value, good_threshold, warn_threshold, reverse=False):
     if pd.isna(value):
         return ("Sin dato", "pill-yellow")
@@ -262,7 +267,7 @@ def load_data(base_path: Path):
     market_sum = pd.read_csv(base_path / "mercado_resumen_mensual.csv", parse_dates=["mes"])
     return si, so, summary, inv, alerts_inv, alerts_beh, market_sum
 
-def apply_filters(df, canales, clientes, categorias, regionales):
+def apply_filters(df, canales, clientes, categorias, regionales, skus, tipos_producto):
     out = df.copy()
     if canales and "canal" in out.columns:
         out = out[out["canal"].isin(canales)]
@@ -272,6 +277,10 @@ def apply_filters(df, canales, clientes, categorias, regionales):
         out = out[out["categoria"].isin(categorias)]
     if regionales and "regional" in out.columns:
         out = out[out["regional"].isin(regionales)]
+    if skus and "sku" in out.columns:
+        out = out[out["sku"].astype(str).isin(skus)]
+    if tipos_producto and "tipo_producto" in out.columns:
+        out = out[out["tipo_producto"].isin(tipos_producto)]
     return out
 
 # =========================================================
@@ -290,6 +299,8 @@ canales = st.sidebar.multiselect("Canal", sorted(x for x in si["canal"].dropna()
 clientes = st.sidebar.multiselect("Cliente", sorted(x for x in si["cliente"].dropna().unique()))
 categorias = st.sidebar.multiselect("Categoría", sorted(x for x in si["categoria"].dropna().unique()))
 regionales = st.sidebar.multiselect("Regional", sorted(x for x in si["regional"].dropna().unique()))
+skus = st.sidebar.multiselect("SKU", sorted(si["sku"].dropna().astype(str).unique())) if "sku" in si.columns else []
+tipos_producto = st.sidebar.multiselect("Tipo de producto", sorted(si["tipo_producto"].dropna().unique())) if "tipo_producto" in si.columns else []
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🧭 Guía rápida")
@@ -304,15 +315,15 @@ st.sidebar.markdown(
 # =========================================================
 # FILTROS
 # =========================================================
-si_f = apply_filters(si, canales, clientes, categorias, regionales)
-so_f = apply_filters(so, canales, clientes, categorias, regionales)
+si_f = apply_filters(si, canales, clientes, categorias, regionales, skus, tipos_producto)
+so_f = apply_filters(so, canales, clientes, categorias, regionales, skus, tipos_producto)
 
 if si_f.empty and so_f.empty:
     st.warning("No hay datos para los filtros seleccionados.")
     st.stop()
 
-si_valid = si_f[si_f["sku_valido"] == True].copy()
-so_valid = so_f[so_f["sku_valido"] == True].copy()
+si_valid = si_f[si_f["sku_valido"] == True].copy() if "sku_valido" in si_f.columns else si_f.copy()
+so_valid = so_f[so_f["sku_valido"] == True].copy() if "sku_valido" in so_f.columns else so_f.copy()
 
 # =========================================================
 # HERO
@@ -327,13 +338,16 @@ st.markdown("""
 # =========================================================
 # KPIS
 # =========================================================
-k1 = si_valid["valor"].sum()
-k2 = so_valid["valor"].sum()
-k3 = si_valid["kilos"].sum()
-k4 = so_valid["kilos"].sum()
+k1 = si_valid["valor"].sum() if "valor" in si_valid.columns else 0
+k2 = so_valid["valor"].sum() if "valor" in so_valid.columns else 0
+k3 = si_valid["kilos"].sum() if "kilos" in si_valid.columns else 0
+k4 = so_valid["kilos"].sum() if "kilos" in so_valid.columns else 0
+u1 = si_valid["unidades"].sum() if "unidades" in si_valid.columns else 0
+u2 = so_valid["unidades"].sum() if "unidades" in so_valid.columns else 0
 
 delta_valor = k1 - k2
 delta_vol = k3 - k4
+delta_u = u1 - u2
 gap_pct = (delta_valor / k1) * 100 if k1 != 0 else 0
 
 # Presupuesto
@@ -373,13 +387,20 @@ if not so_valid.empty:
     if "categoria" in so_valid.columns:
         top_cat = so_valid.groupby("categoria")["valor"].sum().sort_values(ascending=False).index[0]
 
+# Sobreinventario
+sobreinventario_msg = ""
+if "doh_30d" in alerts_inv.columns:
+    sobre = alerts_inv[alerts_inv["doh_30d"] > 30]
+    if len(sobre) > 0:
+        sobreinventario_msg = f"<br><br>⚠️ <b>Sobreinventario:</b> se identifican {len(sobre)} registros con DOH superior a 30 días."
+
 insight_text = (
     f"El negocio registra un sell-in de <b>{format_cop(k1)}</b> y un sell-out de "
     f"<b>{format_cop(k2)}</b>. La brecha comercial es de <b>{format_cop(delta_valor)}</b> "
     f"({gap_pct:.1f}%), lo que sugiere profundizar en rotación, inventario y captura de demanda."
 )
 
-st.markdown(f'<div class="insight-box">📌 {insight_text}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="insight-box">📌 {insight_text}{sobreinventario_msg}</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-title">Resumen ejecutivo</div>', unsafe_allow_html=True)
 
@@ -389,6 +410,10 @@ c2.metric("🛒 Sell-out valor", format_cop(k2), delta=format_cop(delta_valor))
 c3.metric("📦 Sell-in volumen", format_ton(k3))
 c4.metric("🚚 Sell-out volumen", format_ton(k4), delta=format_ton(delta_vol))
 
+c5, c6 = st.columns(2)
+c5.metric("🧮 Sell-in unidades", format_units(u1))
+c6.metric("🏪 Sell-out unidades", format_units(u2), delta=format_units(delta_u))
+
 # =========================================================
 # TARJETAS GERENCIALES
 # =========================================================
@@ -397,7 +422,6 @@ st.markdown('<div class="small-note">Indicadores de control para seguimiento eje
 
 s1, s2, s3, s4 = st.columns(4)
 
-# Cumplimiento presupuesto
 budget_label, budget_class = traffic_light(budget_pct if budget_pct is not None else float("nan"), 100, 95)
 with s1:
     st.markdown(f"""
@@ -409,7 +433,6 @@ with s1:
     </div>
     """, unsafe_allow_html=True)
 
-# DOH
 doh_label, doh_class = traffic_light(doh_avg if doh_avg is not None else float("nan"), 15, 25, reverse=True)
 with s2:
     st.markdown(f"""
@@ -421,7 +444,6 @@ with s2:
     </div>
     """, unsafe_allow_html=True)
 
-# Share
 share_label, share_class = traffic_light(share_company if share_company is not None else float("nan"), 12, 10)
 with s3:
     st.markdown(f"""
@@ -433,7 +455,6 @@ with s3:
     </div>
     """, unsafe_allow_html=True)
 
-# Brecha
 gap_label, gap_class = traffic_light(gap_pct, 5, 10, reverse=True)
 with s4:
     st.markdown(f"""
@@ -485,18 +506,25 @@ with i3:
 si_m = (
     si_valid.assign(mes=lambda d: d["fecha"].values.astype("datetime64[M]"))
     .groupby("mes", as_index=False)
-    .agg(sell_in_valor=("valor", "sum"), sell_in_kilos=("kilos", "sum"))
+    .agg(
+        sell_in_valor=("valor", "sum"),
+        sell_in_kilos=("kilos", "sum"),
+        sell_in_unidades=("unidades", "sum") if "unidades" in si_valid.columns else ("valor", "count")
+    )
 )
 
 so_m = (
     so_valid.assign(mes=lambda d: d["fecha"].values.astype("datetime64[M]"))
     .groupby("mes", as_index=False)
-    .agg(sell_out_valor=("valor", "sum"), sell_out_kilos=("kilos", "sum"))
+    .agg(
+        sell_out_valor=("valor", "sum"),
+        sell_out_kilos=("kilos", "sum"),
+        sell_out_unidades=("unidades", "sum") if "unidades" in so_valid.columns else ("valor", "count")
+    )
 )
 
 trend = pd.merge(si_m, so_m, on="mes", how="outer").fillna(0).sort_values("mes")
 
-# presupuesto mensual si existe
 if summary is not None and not summary.empty:
     sum_copy = summary.copy()
     budget_candidates = [c for c in sum_copy.columns if "presupuesto" in c.lower()]
@@ -593,6 +621,71 @@ with right:
         font=dict(size=13, color="#17324d")
     )
     st.plotly_chart(fig_cat, use_container_width=True)
+
+# =========================================================
+# DETALLE POR SKU / TIPO DE PRODUCTO
+# =========================================================
+st.markdown('<div class="section-title">Detalle por SKU y tipo de producto</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Profundización del desempeño comercial a nivel de producto.</div>', unsafe_allow_html=True)
+
+d1, d2 = st.columns(2)
+
+with d1:
+    if "sku" in so_valid.columns:
+        sku_rank = (
+            so_valid.groupby("sku", as_index=False)
+            .agg(valor=("valor", "sum"))
+            .sort_values("valor", ascending=False)
+            .head(10)
+        )
+        fig_sku = px.bar(
+            sku_rank,
+            x="sku",
+            y="valor",
+            title="Top 10 SKU por sell-out",
+            labels={"valor": "Valor (COP)", "sku": "SKU"},
+            text_auto=".2s"
+        )
+        fig_sku.update_traces(marker_color="#6C63FF")
+        fig_sku.update_layout(
+            template="plotly_white",
+            height=390,
+            title_x=0.03,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            font=dict(size=13, color="#17324d")
+        )
+        st.plotly_chart(fig_sku, use_container_width=True)
+    else:
+        st.info("No se encontró la columna SKU en la base filtrada.")
+
+with d2:
+    if "tipo_producto" in so_valid.columns:
+        tipo_rank = (
+            so_valid.groupby("tipo_producto", as_index=False)
+            .agg(valor=("valor", "sum"))
+            .sort_values("valor", ascending=False)
+        )
+        fig_tipo = px.bar(
+            tipo_rank,
+            x="tipo_producto",
+            y="valor",
+            title="Sell-out por tipo de producto",
+            labels={"valor": "Valor (COP)", "tipo_producto": "Tipo de producto"},
+            text_auto=".2s"
+        )
+        fig_tipo.update_traces(marker_color="#FF9F1C")
+        fig_tipo.update_layout(
+            template="plotly_white",
+            height=390,
+            title_x=0.03,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            font=dict(size=13, color="#17324d")
+        )
+        st.plotly_chart(fig_tipo, use_container_width=True)
+    else:
+        st.info("No se encontró la columna tipo de producto en la base filtrada.")
 
 # =========================================================
 # RANKING CLIENTES
