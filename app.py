@@ -218,9 +218,11 @@ c4.metric("🚚 Sell-out volumen",format_ton(k4),delta=format_ton(delta_vol))
 
 extra1,extra2,extra3=st.columns(3)
 
-share_company=market_sum["share_compania_prom"].mean()*100
-budget_total=summary["presupuesto_valor"].sum()
-budget_pct=(k1/budget_total)*100 if budget_total>0 else 0
+share_company = market_sum["share_compania_prom"].mean()*100 if "share_compania_prom" in market_sum.columns else 0
+
+budget_cols = [c for c in summary.columns if "presupuesto" in c.lower()]
+budget_total = summary[budget_cols[0]].sum() if budget_cols else 0
+budget_pct = (k1/budget_total)*100 if budget_total>0 else 0
 
 with extra1:
 
@@ -288,7 +290,7 @@ yaxis_title="COP Billones"
 st.plotly_chart(fig,use_container_width=True)
 
 # -------------------------------------------------------
-# MIX CANAL
+# COMPOSICION COMERCIAL
 # -------------------------------------------------------
 
 st.markdown('<div class="section-title">Composición comercial</div>',unsafe_allow_html=True)
