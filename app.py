@@ -350,13 +350,19 @@ delta_vol = k3 - k4
 delta_u = u1 - u2
 gap_pct = (delta_valor / k1) * 100 if k1 != 0 else 0
 
-# Presupuesto
+# Presupuesto ajustado por escala
 budget_total = None
 budget_pct = None
 if summary is not None and not summary.empty:
     budget_candidates = [c for c in summary.columns if "presupuesto" in c.lower()]
     if budget_candidates:
         budget_total = summary[budget_candidates[0]].sum()
+
+        if budget_total < 1e6:
+            budget_total = budget_total * 1000
+        elif budget_total < 1e9:
+            budget_total = budget_total * 1_000_000
+
         if budget_total != 0:
             budget_pct = (k1 / budget_total) * 100
 
@@ -396,8 +402,10 @@ if "doh_30d" in alerts_inv.columns:
 
 insight_text = (
     f"El negocio registra un sell-in de <b>{format_cop(k1)}</b> y un sell-out de "
-    f"<b>{format_cop(k2)}</b>. La brecha comercial es de <b>{format_cop(delta_valor)}</b> "
-    f"({gap_pct:.1f}%), lo que sugiere profundizar en rotación, inventario y captura de demanda."
+    f"<b>{format_cop(k2)}</b>. La brecha comercial asciende a <b>{format_cop(delta_valor)}</b> "
+    f"({gap_pct:.1f}%). Esta diferencia sugiere acumulación de inventario en clientes, por lo que "
+    f"se recomienda priorizar revisión de rotación en cuentas clave y ajustar despachos para "
+    f"evitar sobreinventario en el canal."
 )
 
 st.markdown(f'<div class="insight-box">📌 {insight_text}{sobreinventario_msg}</div>', unsafe_allow_html=True)
@@ -530,6 +538,12 @@ if summary is not None and not summary.empty:
     budget_candidates = [c for c in sum_copy.columns if "presupuesto" in c.lower()]
     if "mes" in sum_copy.columns and budget_candidates:
         sum_copy = sum_copy[["mes", budget_candidates[0]]].rename(columns={budget_candidates[0]: "presupuesto"})
+
+        if sum_copy["presupuesto"].sum() < 1e6:
+            sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1000
+        elif sum_copy["presupuesto"].sum() < 1e9:
+            sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1_000_000
+
         trend = trend.merge(sum_copy, on="mes", how="left")
 
 st.markdown('<div class="section-title">Evolución mensual del negocio</div>', unsafe_allow_html=True)
