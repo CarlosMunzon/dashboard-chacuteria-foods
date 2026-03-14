@@ -376,7 +376,7 @@ if summary is not None and not summary.empty:
     if budget_total_raw is not None and budget_total_raw > 0:
         budget_pct = (k1 / budget_total_raw) * 100
         budget_total_display = format_cop(budget_total_raw)
-        budget_label, budget_class = traffic_light(budget_pct, 100, 90
+        budget_label, budget_class = traffic_light(budget_pct, 100, 90)
 
 # Inventario / DOH
 inv_total_kg = None
