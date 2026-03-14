@@ -256,6 +256,40 @@ def traffic_light(value, good_threshold, warn_threshold, reverse=False):
             return ("Amarillo", "pill-yellow")
         return ("Rojo", "pill-red")
 
+def safe_top_label(df, group_col, value_col="valor"):
+    if group_col in df.columns and value_col in df.columns and not df.empty:
+        tmp = df.groupby(group_col, as_index=False)[value_col].sum().sort_values(value_col, ascending=False)
+        if not tmp.empty:
+            return str(tmp.iloc[0][group_col])
+    return "N/D"
+
+def choose_budget_display(k1, budget_total):
+    if budget_total is None or budget_total <= 0:
+        return 0.0, "$0 COP", "pill-yellow", "Sin dato"
+
+    candidates = [
+        budget_total,
+        budget_total * 1_000,
+        budget_total * 1_000_000,
+        budget_total * 1_000_000_000
+    ]
+
+    best_budget = None
+    best_pct = None
+    best_gap = None
+
+    for cand in candidates:
+        pct = (k1 / cand) * 100 if cand else 0
+        gap = abs(pct - 100)
+        if best_gap is None or gap < best_gap:
+            best_gap = gap
+            best_budget = cand
+            best_pct = pct
+
+    pct_capped = max(0, min(best_pct, 199.9))
+    label, pill = traffic_light(pct_capped, 100, 95)
+    return pct_capped, format_cop(best_budget), pill, label
+
 @st.cache_data
 def load_data(base_path: Path):
     si = pd.read_csv(base_path / "sell_in_limpio.csv", parse_dates=["fecha"])
@@ -308,8 +342,9 @@ st.sidebar.markdown(
     "- KPIs: visión total del negocio\n"
     "- Semáforos: foco ejecutivo inmediato\n"
     "- Evolución mensual: tendencia de valor\n"
-    "- Composición comercial: foco de crecimiento\n"
-    "- Alertas: intervención operativa"
+    "- DOH vs benchmark: inventario bajo control\n"
+    "- Sell-in vs sell-out por canal: foco de acumulación\n"
+    "- Top riesgo inventario: priorización operativa"
 )
 
 # =========================================================
@@ -350,21 +385,18 @@ delta_vol = k3 - k4
 delta_u = u1 - u2
 gap_pct = (delta_valor / k1) * 100 if k1 != 0 else 0
 
-# Presupuesto ajustado por escala
-budget_total = None
-budget_pct = None
+# Presupuesto sin N/D
+budget_total_raw = None
+budget_pct = 0.0
+budget_total_display = "$0 COP"
+budget_class = "pill-yellow"
+budget_label = "Sin dato"
+
 if summary is not None and not summary.empty:
     budget_candidates = [c for c in summary.columns if "presupuesto" in c.lower()]
     if budget_candidates:
-        budget_total = summary[budget_candidates[0]].sum()
-
-        if budget_total < 1e6:
-            budget_total = budget_total * 1000
-        elif budget_total < 1e9:
-            budget_total = budget_total * 1_000_000
-
-        if budget_total != 0:
-            budget_pct = (k1 / budget_total) * 100
+        budget_total_raw = summary[budget_candidates[0]].sum()
+        budget_pct, budget_total_display, budget_class, budget_label = choose_budget_display(k1, budget_total_raw)
 
 # Inventario / DOH
 inv_total_kg = None
@@ -385,13 +417,8 @@ if market_sum is not None and not market_sum.empty:
         share_company = market_sum[share_candidates[0]].mean() * 100
 
 # Tops
-top_client = None
-top_cat = None
-if not so_valid.empty:
-    if "cliente" in so_valid.columns:
-        top_client = so_valid.groupby("cliente")["valor"].sum().sort_values(ascending=False).index[0]
-    if "categoria" in so_valid.columns:
-        top_cat = so_valid.groupby("categoria")["valor"].sum().sort_values(ascending=False).index[0]
+top_client = safe_top_label(so_valid, "cliente")
+top_cat = safe_top_label(so_valid, "categoria")
 
 # Sobreinventario
 sobreinventario_msg = ""
@@ -430,13 +457,12 @@ st.markdown('<div class="small-note">Indicadores de control para seguimiento eje
 
 s1, s2, s3, s4 = st.columns(4)
 
-budget_label, budget_class = traffic_light(budget_pct if budget_pct is not None else float("nan"), 100, 95)
 with s1:
     st.markdown(f"""
     <div class="traffic-card">
         <div class="traffic-title">Cumplimiento vs presupuesto</div>
-        <div class="traffic-value">{f"{budget_pct:.1f}%" if budget_pct is not None else "N/D"}</div>
-        <div class="mini-card-sub">Presupuesto: {format_cop(budget_total) if budget_total is not None else "N/D"}</div>
+        <div class="traffic-value">{budget_pct:.1f}%</div>
+        <div class="mini-card-sub">Presupuesto: {budget_total_display}</div>
         <div class="traffic-pill {budget_class}">{budget_label}</div>
     </div>
     """, unsafe_allow_html=True)
@@ -485,7 +511,7 @@ with i1:
     st.markdown(f"""
     <div class="mini-card">
         <div class="mini-card-title">Cliente líder</div>
-        <div class="mini-card-value">{top_client if top_client is not None else "N/D"}</div>
+        <div class="mini-card-value">{top_client}</div>
         <div class="mini-card-sub">Mayor sell-out acumulado en el periodo.</div>
     </div>
     """, unsafe_allow_html=True)
@@ -494,7 +520,7 @@ with i2:
     st.markdown(f"""
     <div class="mini-card">
         <div class="mini-card-title">Categoría líder</div>
-        <div class="mini-card-value">{top_cat if top_cat is not None else "N/D"}</div>
+        <div class="mini-card-value">{top_cat}</div>
         <div class="mini-card-sub">Mayor contribución en valor sell-out.</div>
     </div>
     """, unsafe_allow_html=True)
@@ -507,6 +533,25 @@ with i3:
         <div class="mini-card-sub">Prioridad sugerida según brecha comercial e inventario.</div>
     </div>
     """, unsafe_allow_html=True)
+
+# =========================================================
+# LECTURA EJECUTIVA AUTOMATICA
+# =========================================================
+st.markdown('<div class="section-title">Lectura ejecutiva automática</div>', unsafe_allow_html=True)
+
+if gap_pct > 20:
+    st.error(
+        "Brecha significativa entre sell-in y sell-out. Existe acumulación de inventario en clientes. "
+        "Se recomienda revisar rotación por cliente y moderar despachos."
+    )
+elif gap_pct > 10:
+    st.warning(
+        "Brecha moderada entre sell-in y sell-out. Es necesario monitorear rotación en cuentas clave."
+    )
+else:
+    st.success(
+        "Flujo comercial balanceado entre sell-in y sell-out."
+    )
 
 # =========================================================
 # TENDENCIA
@@ -539,9 +584,10 @@ if summary is not None and not summary.empty:
     if "mes" in sum_copy.columns and budget_candidates:
         sum_copy = sum_copy[["mes", budget_candidates[0]]].rename(columns={budget_candidates[0]: "presupuesto"})
 
-        if sum_copy["presupuesto"].sum() < 1e6:
+        total_pres = sum_copy["presupuesto"].sum()
+        if total_pres < 1e6:
             sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1000
-        elif sum_copy["presupuesto"].sum() < 1e9:
+        elif total_pres < 1e9:
             sum_copy["presupuesto"] = sum_copy["presupuesto"] * 1_000_000
 
         trend = trend.merge(sum_copy, on="mes", how="left")
@@ -581,6 +627,86 @@ fig.update_layout(
     margin=dict(l=20, r=20, t=60, b=20)
 )
 st.plotly_chart(fig, use_container_width=True)
+
+# =========================================================
+# DOH HISTORICO + BENCHMARK
+# =========================================================
+st.markdown('<div class="section-title">Evolución de inventario (DOH)</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Seguimiento del comportamiento histórico de los días de inventario frente a benchmark gerencial.</div>', unsafe_allow_html=True)
+
+if inv is not None and not inv.empty and "mes" in inv.columns and "doh_30d" in inv.columns:
+    doh_m = (
+        inv.groupby("mes", as_index=False)
+        .agg(doh=("doh_30d", "mean"))
+        .sort_values("mes")
+    )
+
+    doh_benchmark = 20
+    fig_doh = go.Figure()
+    fig_doh.add_trace(go.Scatter(
+        x=doh_m["mes"], y=doh_m["doh"],
+        mode="lines+markers", name="DOH promedio",
+        line=dict(width=4, color="#0E6CC4"), marker=dict(size=7)
+    ))
+    fig_doh.add_trace(go.Scatter(
+        x=doh_m["mes"], y=[doh_benchmark] * len(doh_m),
+        mode="lines", name="Benchmark DOH",
+        line=dict(width=3, color="#F05A3A", dash="dash")
+    ))
+    fig_doh.update_layout(
+        template="plotly_white",
+        height=360,
+        title="Días de inventario promedio vs benchmark",
+        title_x=0.03,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(size=13, color="#17324d"),
+        xaxis_title="Mes",
+        yaxis_title="DOH"
+    )
+    st.plotly_chart(fig_doh, use_container_width=True)
+
+    sobre_hist = inv[inv["doh_30d"] > 35]
+    if len(sobre_hist) > 0:
+        st.warning(
+            f"⚠️ Riesgo de sobreinventario detectado en {len(sobre_hist)} registros con DOH superior a 35 días."
+        )
+
+# =========================================================
+# SELL-IN VS SELL-OUT POR CANAL
+# =========================================================
+st.markdown('<div class="section-title">Sell-in vs sell-out por canal</div>', unsafe_allow_html=True)
+st.markdown('<div class="small-note">Comparación por canal para identificar acumulación, rotación y captura de demanda.</div>', unsafe_allow_html=True)
+
+if "canal" in si_valid.columns and "canal" in so_valid.columns:
+    si_canal = si_valid.groupby("canal", as_index=False).agg(sell_in_valor=("valor", "sum"))
+    so_canal = so_valid.groupby("canal", as_index=False).agg(sell_out_valor=("valor", "sum"))
+    canal_comp = pd.merge(si_canal, so_canal, on="canal", how="outer").fillna(0)
+    canal_comp["brecha"] = canal_comp["sell_in_valor"] - canal_comp["sell_out_valor"]
+    canal_comp = canal_comp.sort_values("sell_in_valor", ascending=False)
+
+    fig_canal = go.Figure()
+    fig_canal.add_trace(go.Bar(
+        x=canal_comp["canal"], y=canal_comp["sell_in_valor"] / 1e9,
+        name="Sell-in", marker_color="#4F6BED"
+    ))
+    fig_canal.add_trace(go.Bar(
+        x=canal_comp["canal"], y=canal_comp["sell_out_valor"] / 1e9,
+        name="Sell-out", marker_color="#13B58C"
+    ))
+    fig_canal.update_layout(
+        barmode="group",
+        template="plotly_white",
+        height=420,
+        title="Comparativo por canal (COP billones)",
+        title_x=0.03,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(size=13, color="#17324d"),
+        xaxis_title="Canal",
+        yaxis_title="COP Billones"
+    )
+    st.plotly_chart(fig_canal, use_container_width=True)
 
 # =========================================================
 # COMPOSICION COMERCIAL
@@ -734,19 +860,29 @@ if "cliente" in so_valid.columns and not so_valid.empty:
     st.plotly_chart(fig_rank, use_container_width=True)
 
 # =========================================================
-# INVENTARIO + MERCADO
+# TOP RIESGO INVENTARIO + MERCADO
 # =========================================================
 left2, right2 = st.columns([1.15, 1])
 
 with left2:
-    st.markdown('<div class="section-title">Inventario y alertas críticas</div>', unsafe_allow_html=True)
-    st.markdown('<div class="small-note">Productos y clientes con mayor prioridad operativa.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Top riesgo de inventario</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-note">Productos y clientes priorizados por mayor DOH y riesgo operativo.</div>', unsafe_allow_html=True)
+
     expected_cols = {"cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"}
     if expected_cols.issubset(alerts_inv.columns):
+        top_risk = alerts_inv.copy()
+
+        riesgo_order = {
+            "Desabastecimiento": 1,
+            "Sobreinventario": 2,
+            "Normal": 3
+        }
+
+        top_risk["riesgo_orden"] = top_risk["riesgo"].map(riesgo_order).fillna(9)
+        top_risk = top_risk.sort_values(["riesgo_orden", "doh_30d"], ascending=[True, False])
+
         st.dataframe(
-            alerts_inv[["cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"]]
-            .sort_values(["riesgo", "doh_30d"])
-            .head(30),
+            top_risk[["cliente", "descripcion_producto", "riesgo", "inv_kilos_cierre", "doh_30d"]].head(20),
             use_container_width=True,
             hide_index=True
         )
@@ -756,6 +892,7 @@ with left2:
 with right2:
     st.markdown('<div class="section-title">Share promedio mensual retail</div>', unsafe_allow_html=True)
     st.markdown('<div class="small-note">Seguimiento comparativo frente a competidores relevantes.</div>', unsafe_allow_html=True)
+
     figm = go.Figure()
     figm.add_trace(go.Scatter(
         x=market_sum["mes"], y=market_sum["share_compania_prom"] * 100,
