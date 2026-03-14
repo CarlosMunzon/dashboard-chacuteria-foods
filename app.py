@@ -25,8 +25,8 @@ def filter_df(df, prefix):
     return out
 st.title("Chacutería Foods – Dashboard comercial 2025")
 st.caption("App Streamlit entregable. Reemplazando los archivos de la carpeta data se actualiza la lectura.")
-si_f = filter_df(si, "si")
-so_f = filter_df(so, "so")
+si_f = filter_df(si)
+so_f = filter_df(so)
 if si_f.empty and so_f.empty:
     st.warning("No hay datos para los filtros seleccionados.")
     st.stop()
